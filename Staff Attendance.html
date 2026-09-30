@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIKIDS Attendance System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a0f1e; --card: #111827; --accent: #00e5ff; 
+            --green: #10b981; --red: #ef4444; --text: #f1f5f9; 
+            --muted: #64748b; --border: rgba(255,255,255,0.07);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Space Grotesk', 'Noto Sans Khmer', sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 15px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        @media screen and (max-width: 600px) { .admin-only { display: none; } }
+
+        .card { background: var(--card); border-radius: 15px; border: 1px solid var(--border); padding: 20px; text-align: center; margin-bottom: 20px; }
+        #qrcode { background: white; padding: 10px; display: inline-block; border-radius: 10px; margin: 15px 0; }
+        .scan-box { background: #1a2235; padding: 20px; border-radius: 15px; border: 1px solid var(--accent); }
+        select, .btn { width: 100%; padding: 15px; margin-top: 10px; border-radius: 10px; font-size: 16px; border: none; font-weight: bold; cursor: pointer; }
+        select { background: var(--bg); color: white; border: 1px solid var(--border); }
+        
+        .btn-morning { background: var(--green); color: white; }
+        .btn-afternoon { background: #7c3aed; color: white; }
+        .btn-checkout { background: var(--red); color: white; }
+        .btn-summary { background: var(--accent); color: #000; margin-top: 20px; }
+        .btn-reset { background: #374151; color: #f87171; margin-top: 10px; }
+        .btn-setloc { background: #f59e0b; color: #000; margin-top: 10px; }
+        .btn-unlock { background: #374151; color: #f59e0b; margin-top: 10px; font-size: 12px; padding: 10px; }
+        .btn-newstaff { background: transparent; color: var(--accent); border: 1px dashed var(--accent); margin-top: 10px; font-size: 14px; padding: 12px; }
+        .btn-newstaff:hover { background: rgba(0,229,255,0.08); }
+        
+        .table-wrap { overflow-x: auto; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; background: var(--card); min-width: 600px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+        th { background: #1f2937; color: var(--accent); }
+        .late-text { color: var(--red); font-weight: bold; }
+        .new-badge { font-size: 9px; color: #000; background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 5px; font-weight: bold; }
+
+        /* ===== EDITABLE CELL STYLES ===== */
+        .cell-input {
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-family: 'Space Grotesk', 'Noto Sans Khmer', sans-serif;
+            font-size: 11px;
+            width: 100%;
+            padding: 2px 4px;
+            border-radius: 5px;
+            outline: none;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .cell-input:hover { background: rgba(0,229,255,0.05); }
+        .cell-input:focus {
+            background: rgba(0,229,255,0.08);
+            box-shadow: 0 0 0 1px var(--accent);
+            color: var(--accent);
+            cursor: text;
+        }
+        .cell-input.has-value { color: #a3e635; }
+        .cell-input.late-val { color: var(--red) !important; }
+        .cell-input::placeholder { color: var(--muted); }
+        /* ================================ */
+
+        .loc-status {
+            font-size: 12px; margin-top: 10px; padding: 8px; border-radius: 8px;
+            background: rgba(255,255,255,0.03); color: var(--muted);
+        }
+        .loc-status.ok { color: var(--green); }
+        .loc-status.bad { color: var(--red); }
+
+        /* ===== DEVICE LOCK STYLES ===== */
+        #device-locked-view {
+            background: rgba(0,229,255,0.06);
+            border: 1px solid var(--accent);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        #device-locked-view .lock-label { font-size: 12px; color: var(--muted); }
+        #device-locked-view .lock-name { font-size: 20px; font-weight: bold; color: var(--accent); margin-top: 4px; }
+        #device-locked-view .lock-role { font-size: 12px; color: var(--muted); margin-top: 2px; }
+        /* =============================== */
+
+        /* ===== NEW STAFF MODAL ===== */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            display: none; align-items: center; justify-content: center;
+            padding: 15px; z-index: 1000;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: var(--card); border: 1px solid var(--accent); border-radius: 15px;
+            padding: 20px; width: 100%; max-width: 420px; text-align: left;
+        }
+        .modal h3 { color: var(--accent); margin-bottom: 4px; }
+        .modal .hint { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+        .modal label { display: block; font-size: 13px; margin-top: 12px; color: var(--muted); }
+        .modal input[type="text"] {
+            width: 100%; padding: 13px; margin-top: 6px; border-radius: 10px; font-size: 16px;
+            background: var(--bg); color: var(--text); border: 1px solid var(--border); outline: none;
+        }
+        .modal input[type="text"]:focus { border-color: var(--accent); }
+        .modal .check-row { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 13px; color: var(--text); }
+        .modal .check-row input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; }
+        .modal .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+        .btn-save { background: var(--green); color: white; }
+        .btn-cancel { background: #374151; color: var(--text); }
+        /* =========================== */
+
+        .toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px);
+            background: #1f2937; color: var(--text); padding: 12px 24px; border-radius: 10px;
+            border: 1px solid var(--accent); font-size: 14px; transition: transform 0.3s ease;
+            z-index: 1100; max-width: 90%; text-align: center;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.success { border-color: var(--green); }
+        .toast.error { border-color: var(--red); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center; color:var(--accent); margin-bottom:15px;">MIKIDS ATTENDANCE</h2>
+
+    <div class="card admin-only">
+        <h3>QR សម្រាប់ស្កេន (Admin)</h3>
+        <div id="qrcode"></div>
+        <button class="btn btn-setloc" onclick="setSchoolLocation()">📍 កែប្រែទីតាំងសាលា (ជម្រើស — ប្រើតែពេលចង់ប្តូរទីតាំង)</button>
+        <button class="btn" style="background:#1f2937; color:var(--accent); border:1px solid var(--accent); margin-top:10px;" onclick="window.open(CONFIG.schoolMapLink, '_blank')">🗺️ មើលទីតាំងសាលាលើ Google Maps</button>
+        <div class="loc-status" id="loc-status-display">កំពុងពិនិត្យទីតាំងសាលា...</div>
+    </div>
+
+    <div class="scan-box">
+        <div id="device-locked-view" style="display:none;">
+            <div class="lock-label">🔒 ឧបករណ៍នេះកំណត់សម្រាប់</div>
+            <div class="lock-name" id="locked-name-display"></div>
+            <div class="lock-role" id="locked-role-display"></div>
+        </div>
+        <div id="device-select-view">
+            <label>ជ្រើសរើសឈ្មោះបុគ្គលិក:</label>
+            <select id="staff-name"></select>
+            <button class="btn btn-newstaff" onclick="openNewStaffModal()">➕ បុគ្គលិកថ្មី (New Staff)</button>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <button class="btn btn-morning" onclick="submitAttendance('morning')">☀️ CheckIn(Morning)</button>
+            <button class="btn btn-afternoon" onclick="submitAttendance('afternoon')">🌤️ CheckIn(Afternoon)</button>
+            <button class="btn btn-checkout" onclick="submitAttendance('checkout')">🚪 CheckOut</button>
+        </div>
+        <div class="loc-status" id="loc-status-scan"></div>
+        <a href="#" onclick="window.open(CONFIG.schoolMapLink, '_blank'); return false;" style="display:block; text-align:center; margin-top:12px; color:var(--accent); font-size:12px; text-decoration:underline;">🗺️ មើលទីតាំងសាលា</a>
+        <button class="btn btn-unlock admin-only" onclick="unlockDevice()">🔓 ប្តូរអ្នកប្រើឧបករណ៍នេះ (ត្រូវការលេខសម្ងាត់ Admin)</button>
+    </div>
+
+    <button class="btn btn-summary admin-only" onclick="sendSummaryToTelegram()">📤 ផ្ញើរបាយការណ៍សរុបទៅ Telegram</button>
+    <button class="btn btn-reset admin-only" onclick="resetRecords()">🗑️ លុបទិន្នន័យថ្ងៃនេះ (Reset)</button>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>CheckIn (AM)</th>
+                    <th>Late (AM)</th>
+                    <th>CheckIn (PM)</th>
+                    <th>Late (PM)</th>
+                    <th>CheckOut</th>
+                </tr>
+            </thead>
+            <tbody id="attendance-list"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ===== NEW STAFF MODAL ===== -->
+<div class="modal-overlay" id="newstaff-modal">
+    <div class="modal">
+        <h3>➕ បុគ្គលិកថ្មី</h3>
+        <div class="hint">បញ្ចូលព័ត៌មានរបស់អ្នក។ ឧបករណ៍នេះនឹងត្រូវចាក់សោសម្រាប់ឈ្មោះនេះ។</div>
+
+        <label for="new-staff-name">ឈ្មោះ (Name)</label>
+        <input type="text" id="new-staff-name" maxlength="40" autocomplete="off" placeholder="ឧ. Sok Dara" />
+
+        <label for="new-staff-role">តួនាទី (Role)</label>
+        <input type="text" id="new-staff-role" maxlength="40" autocomplete="off" placeholder="ឧ. English Teacher" />
+
+        <div class="check-row">
+            <input type="checkbox" id="new-staff-lock" checked />
+            <label for="new-staff-lock" style="margin:0; color:var(--text);">
+                ចាក់សោឧបករណ៍នេះសម្រាប់បុគ្គលិកនេះ<br>
+                <span style="color:var(--muted); font-size:11px;">(Admin ដែលបន្ថែមជំនួសអ្នកដទៃ សូមដោះធីកនេះ — ត្រូវការលេខសម្ងាត់)</span>
+            </label>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-cancel" onclick="closeNewStaffModal()">បោះបង់</button>
+            <button class="btn btn-save" onclick="registerNewStaff()">✅ រក្សាទុក</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CONFIG = {
+    token: '8242266919:AAGE6uMJ_-UvM-3KBZkJVFhJyTLvcTVW5tQ',
+    chatId: '-1003584563383',
+    morningLate: '07:05',   
+    afternoonLate: '13:05', 
+    githubLink: 'https://chanthoeur8-cell.github.io/Attendance-staff/',
+    schoolMapLink: 'https://goo.gl/maps/WVQkhMkksk1uiJrU7',
+    schoolLat: 11.614690,
+    schoolLng: 104.907773,
+    allowedRadiusMeters: 100, // អាចកែបានតាមចង់បាន — ចម្ងាយអតិបរមាដែលអនុញ្ញាតឲ្យស្កេន (100 ម៉ែត្រ)
+    // 🌐 បញ្ជីបុគ្គលិកថ្មីរួមគ្នា (គ្រប់ឧបករណ៍ឃើញដូចគ្នា ហើយជាប់រហូត)
+    // បំពេញ URL របស់ Firebase Realtime Database ឧ. 'https://mikids-xxxxx-default-rtdb.firebaseio.com'
+    // ទុកទទេ = រក្សាទុកតែក្នុង browser នេះប៉ុណ្ណោះ
+    staffDbUrl: '',
+    adminPin: '#_MIKIDS_international_school' // ⚠️ សូមប្តូរលេខសម្ងាត់នេះទៅជាលេខផ្សេងដែលមានតែ Admin ដឹង! ត្រូវការសម្រាប់ដោះសោឧបករណ៍
+};
+
+const STAFF_LIST = [
+    { name: "Ashley villela", role: "English Teacher" },
+    { name: "CHOT HORN", role: "Teacher" },
+    { name: "Po Sodin", role: "Administration &Teacher" },
+    { name: "អឿន កាណាល់", role: "Teacher" },
+    { name: "Desha Bushell", role: "English Teacher" },
+    { name: "Leang Sopheavy", role: "Computer Teacher" },
+    { name: "Chamnan Veasna", role: "English Teacher" },
+    { name: "Born Chhorda", role: "Teacher" },
+    { name: "SOK SREYPICE", role: "English Teacher" },
+    { name: "Eng sreynin", role: "Receptionist" },
+    { name: "កុសល សៀកម៉េង", role: "Assistant Teacher" },
+    { name: "vat mouy saing", role: "Chinese Teacher" },
+    { name: "ឈឹមវ៉ាន លីហង្ស", role: "Teacher" },
+    { name: "Dorn Sreyneth", role: "English Teacher" },
+    { name: "សាមួយ វ៉ានឌឿន", role: "Teacher" },
+    { name: "Hong Sreyleap", role: "Assistant Teacher" }
+];
+
+// ========== HELPERS ==========
+// ការពារឈ្មោះដែលមានតួអក្សរពិសេស (", ', <, &) មិនឲ្យបំបែក HTML ឬ Telegram message
+function esc(str) {
+    return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function readCookie(key) {
+    const m = document.cookie.split('; ').find(r => r.startsWith(key + '='));
+    return m ? decodeURIComponent(m.slice(key.length + 1)) : null;
+}
+function writeCookie(key, val) {
+    document.cookie = `${key}=${encodeURIComponent(val)}; max-age=315360000; path=/; SameSite=Lax`;
+}
+function clearCookie(key) {
+    document.cookie = `${key}=; max-age=0; path=/`;
+}
+
+// ========== CUSTOM (NEW) STAFF ==========
+// បុគ្គលិកថ្មីត្រូវបានរក្សាទុកក្នុង browser នេះ (មិនត្រូវលុបរាល់ថ្ងៃ)
+const CUSTOM_STAFF_KEY = 'mikids_custom_staff';
+
+function loadCustomStaff() {
+    try {
+        const arr = JSON.parse(localStorage.getItem(CUSTOM_STAFF_KEY)) || [];
+        arr.forEach(s => {
+            if (s && s.name && !staffExists(s.name)) STAFF_LIST.push({ name: s.name, role: s.role || '', isNew: true });
+        });
+    } catch (e) { /* ignore corrupt data */ }
+}
+
+function saveCustomStaff() {
+    const custom = STAFF_LIST.filter(s => s.isNew).map(s => ({ name: s.name, role: s.role }));
+    localStorage.setItem(CUSTOM_STAFF_KEY, JSON.stringify(custom));
+}
+
+// ----- Shared staff list (Firebase Realtime Database via REST) -----
+function cloudEnabled() {
+    return !!CONFIG.staffDbUrl;
+}
+
+// key ត្រូវបានបង្កើតពីឈ្មោះ (hex) ដូច្នេះឈ្មោះដដែលមិនអាចស្ទួនបានទេ
+function staffKey(name) {
+    return Array.from(new TextEncoder().encode(name.trim().toLowerCase()))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function pushCloudStaff(name, role) {
+    if (!cloudEnabled()) return false;
+    try {
+        const res = await fetch(`${CONFIG.staffDbUrl.replace(/\/$/, '')}/staff/${staffKey(name)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, role, addedAt: Date.now() })
+        });
+        return res.ok;
+    } catch (e) {
+        return false;
+    }
+}
+
+// ទាញបុគ្គលិកថ្មីពី cloud ហើយបញ្ចូលក្នុងបញ្ជី; ត្រឡប់ true ប្រសិនបើមានការផ្លាស់ប្តូរ
+async function syncCloudStaff() {
+    if (!cloudEnabled()) return false;
+    try {
+        const res = await fetch(`${CONFIG.staffDbUrl.replace(/\/$/, '')}/staff.json`);
+        if (!res.ok) return false;
+        const data = await res.json();
+        if (!data) return false;
+        let changed = false;
+        Object.values(data)
+            .sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0))
+            .forEach(s => {
+                if (s && s.name && !staffExists(s.name)) {
+                    STAFF_LIST.push({ name: s.name, role: s.role || '', isNew: true });
+                    changed = true;
+                }
+            });
+        if (changed) saveCustomStaff();
+        return changed;
+    } catch (e) {
+        return false;
+    }
+}
+
+function staffExists(name) {
+    const n = name.trim().toLowerCase();
+    return STAFF_LIST.some(s => s.name.trim().toLowerCase() === n);
+}
+
+function populateStaffSelect(selectedName) {
+    const select = document.getElementById('staff-name');
+    select.innerHTML = '<option value="">-- Select --</option>' +
+        STAFF_LIST.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+    if (selectedName) select.value = selectedName;
+}
+
+// ========== AUTO RESET EACH DAY ==========
+const TODAY = new Date().toISOString().slice(0, 10);
+const storedDate = localStorage.getItem('mikids_date');
+if (storedDate !== TODAY) {
+    localStorage.removeItem('mikids_v2_db');
+    localStorage.setItem('mikids_date', TODAY);
+}
+
+let records = JSON.parse(localStorage.getItem('mikids_v2_db')) || {};
+
+// ========== DEVICE LOCK (ការពារការស្កេនជំនួសគ្នា) ==========
+// ពេលបុគ្គលិកជ្រើសរើសឈ្មោះលើកទីមួយនិងចុចប៊ូតុងស្កេន ប្រព័ន្ធនឹង "ចាក់សោ" ទូរស័ព្ទ/ឧបករណ៍នេះ
+// ឲ្យប្រើបានតែឈ្មោះនោះម្តងទៀត។ ដើម្បីប្តូរអ្នកប្រើ ត្រូវការលេខសម្ងាត់ Admin (CONFIG.adminPin)។
+// សោត្រូវបានរក្សាទុកទាំងក្នុង localStorage និង cookie (ជាការបម្រុង) ដូច្នេះការលុប storage តែមួយមិនអាចដោះសោបានទេ។
+const DEVICE_KEY = 'mikids_device_user';
+
+function getDeviceUser() {
+    const raw = localStorage.getItem(DEVICE_KEY) || readCookie(DEVICE_KEY);
+    if (!raw) return null;
+    try {
+        const user = JSON.parse(raw);
+        if (!user || !user.name) return null;
+        // ធ្វើសមកាលកម្មទាំងពីរកន្លែង
+        localStorage.setItem(DEVICE_KEY, raw);
+        writeCookie(DEVICE_KEY, raw);
+        return user;
+    } catch (e) {
+        return null;
+    }
+}
+
+function lockDeviceToUser(name, role) {
+    if (role === undefined) {
+        const staff = STAFF_LIST.find(s => s.name === name);
+        role = staff ? staff.role : '';
+    }
+    const raw = JSON.stringify({ name, role });
+    localStorage.setItem(DEVICE_KEY, raw);
+    writeCookie(DEVICE_KEY, raw);
+}
+
+function unlockDevice() {
+    const pin = prompt("បញ្ចូលលេខសម្ងាត់ Admin ដើម្បីប្តូរអ្នកប្រើឧបករណ៍នេះ:");
+    if (pin === null) return;
+    if (pin !== CONFIG.adminPin) {
+        showToast("❌ លេខសម្ងាត់មិនត្រឹមត្រូវ!", 'error');
+        return;
+    }
+    localStorage.removeItem(DEVICE_KEY);
+    clearCookie(DEVICE_KEY);
+    showToast("✅ ឧបករណ៍នេះអាចជ្រើសរើសឈ្មោះថ្មីបានហើយ", 'success');
+    updateDeviceUserView();
+}
+
+function updateDeviceUserView() {
+    const user = getDeviceUser();
+    const lockedView = document.getElementById('device-locked-view');
+    const selectView = document.getElementById('device-select-view');
+    if (user) {
+        lockedView.style.display = 'block';
+        selectView.style.display = 'none';
+        document.getElementById('locked-name-display').textContent = user.name;
+        document.getElementById('locked-role-display').textContent = user.role || '';
+    } else {
+        lockedView.style.display = 'none';
+        selectView.style.display = 'block';
+    }
+}
+// ============================================================
+
+// ========== NEW STAFF REGISTRATION ==========
+function openNewStaffModal() {
+    document.getElementById('new-staff-name').value = '';
+    document.getElementById('new-staff-role').value = '';
+    document.getElementById('new-staff-lock').checked = true;
+    document.getElementById('newstaff-modal').classList.add('show');
+    setTimeout(() => document.getElementById('new-staff-name').focus(), 50);
+}
+
+function closeNewStaffModal() {
+    document.getElementById('newstaff-modal').classList.remove('show');
+}
+
+async function registerNewStaff() {
+    const name = document.getElementById('new-staff-name').value.replace(/\s+/g, ' ').trim();
+    const role = document.getElementById('new-staff-role').value.replace(/\s+/g, ' ').trim();
+    const lock = document.getElementById('new-staff-lock').checked;
+
+    if (name.length < 2) return showToast("សូមបញ្ចូលឈ្មោះ!", 'error');
+    if (!role) return showToast("សូមបញ្ចូលតួនាទី!", 'error');
+    if (staffExists(name)) return showToast("ឈ្មោះនេះមានក្នុងបញ្ជីរួចហើយ! សូមជ្រើសរើសពីបញ្ជី។", 'error');
+
+    if (lock) {
+        // បុគ្គលិកចុះឈ្មោះខ្លួនឯង — ត្រូវនៅក្នុងបរិវេណសាលា
+        showToast("📍 កំពុងពិនិត្យទីតាំង...", 'success');
+        const loc = await verifyLocation();
+        if (!loc.ok) return showToast(loc.message, 'error');
+
+        if (!confirm(`តើអ្នកគឺជា "${name}" មែនទេ?\n\n⚠️ ឧបករណ៍នេះនឹងចាក់សោសម្រាប់តែ "${name}" ប៉ុណ្ណោះ។ មិនអាចប្តូរបានទេ លុះត្រាតែ Admin ដោះសោ។`)) return;
+    } else {
+        // Admin បន្ថែមជំនួសអ្នកដទៃ — ត្រូវការលេខសម្ងាត់
+        const pin = prompt("បញ្ចូលលេខសម្ងាត់ Admin ដើម្បីបន្ថែមបុគ្គលិកដោយមិនចាក់សោឧបករណ៍:");
+        if (pin === null) return;
+        if (pin !== CONFIG.adminPin) return showToast("❌ លេខសម្ងាត់មិនត្រឹមត្រូវ!", 'error');
+    }
+
+    STAFF_LIST.push({ name, role, isNew: true });
+    saveCustomStaff();
+
+    if (lock) lockDeviceToUser(name, role);
+
+    // បង្ហាញក្នុងបញ្ជី "ជ្រើសរើសឈ្មោះ" ភ្លាមៗ ហើយជ្រើសរើសឈ្មោះថ្មីនោះស្រាប់
+    populateStaffSelect(name);
+    renderTable();
+    updateDeviceUserView();
+    closeNewStaffModal();
+
+    // រក្សាទុកទៅ cloud (ប្រសិនបើបានកំណត់) ដើម្បីឲ្យគ្រប់ឧបករណ៍ឃើញ
+    let cloudMsg = '';
+    if (cloudEnabled()) {
+        const ok = await pushCloudStaff(name, role);
+        cloudMsg = ok ? ' (រក្សាទុករួមគ្នារួចរាល់)' : ' (⚠️ រក្សាទុករួមគ្នាមិនបាន — មានតែក្នុងឧបករណ៍នេះ)';
+    }
+
+    sendToTelegram(`🆕 <b>បុគ្គលិកថ្មី | MIKIDS</b>\n👤 ឈ្មោះ: <b>${esc(name)}</b>\nRole: <b>${esc(role)}</b>\n${lock ? '🔒 ចាក់សោឧបករណ៍ជាមួយបុគ្គលិកនេះ' : '➕ បន្ថែមដោយ Admin'}`);
+    showToast(`✅ បានបន្ថែម "${name}" ក្នុងបញ្ជីរួចរាល់${cloudMsg}`, cloudMsg.includes('⚠️') ? 'error' : 'success');
+}
+// ============================================================
+
+// ========== SCHOOL LOCATION (GPS GATE) ==========
+// admin ត្រូវចុច "កំណត់ទីតាំងសាលា" ម្តងនៅសាលា ដើម្បីរក្សាទុកកូអរដោនេពិតប្រាកដ
+function getSchoolLocation() {
+    const raw = localStorage.getItem('mikids_school_location');
+    if (raw) return JSON.parse(raw);
+    // ទីតាំងសាលាដែលបានកំណត់ស្រាប់ក្នុងកូដ (MiKids International School)
+    return { lat: CONFIG.schoolLat, lng: CONFIG.schoolLng };
+}
+
+function setSchoolLocation() {
+    if (!navigator.geolocation) {
+        showToast("ឧបករណ៍នេះមិនគាំទ្រ GPS ទេ!", 'error');
+        return;
+    }
+    showToast("កំពុងចាប់ទីតាំង...", 'success');
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            localStorage.setItem('mikids_school_location', JSON.stringify(loc));
+            showToast("✅ បានកំណត់ទីតាំងសាលារួចរាល់!", 'success');
+            updateLocationStatusDisplay();
+        },
+        (err) => {
+            showToast("❌ មិនអាចចាប់ទីតាំងបាន: " + err.message, 'error');
+        },
+        { enableHighAccuracy: true, timeout: 15000 }
+    );
+}
+
+function haversineDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // earth radius in meters
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+function updateLocationStatusDisplay() {
+    const el = document.getElementById('loc-status-display');
+    if (!el) return;
+    const school = getSchoolLocation();
+    const isCustom = !!localStorage.getItem('mikids_school_location');
+    el.textContent = `✅ ទីតាំងសាលា: ${school.lat.toFixed(6)}, ${school.lng.toFixed(6)} ${isCustom ? '(កំណត់ដោយដៃ)' : '(MiKids School)'} | ចម្ងាយអនុញ្ញាត: ${CONFIG.allowedRadiusMeters}m`;
+    el.className = 'loc-status ok';
+}
+
+// ត្រឡប់ជា Promise: resolve({ok:true}) ឬ resolve({ok:false, message})
+function verifyLocation() {
+    return new Promise((resolve) => {
+        const school = getSchoolLocation();
+        if (!navigator.geolocation) {
+            resolve({ ok: false, message: "❌ ឧបករណ៍នេះមិនគាំទ្រការចាប់ទីតាំង GPS ទេ!" });
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const dist = haversineDistance(pos.coords.latitude, pos.coords.longitude, school.lat, school.lng);
+                if (dist <= CONFIG.allowedRadiusMeters) {
+                    resolve({ ok: true, distance: dist });
+                } else {
+                    resolve({ ok: false, message: `❌ អ្នកនៅឆ្ងាយពីសាលា ${Math.round(dist)}m! សូមចូលមកកាន់សាលាដើម្បីស្កេន (អនុញ្ញាតត្រឹម ${CONFIG.allowedRadiusMeters}m)` });
+                }
+            },
+            (err) => {
+                let msg = "❌ មិនអាចទទួលបានទីតាំងរបស់អ្នកទេ។";
+                if (err.code === 1) msg = "❌ សូមអនុញ្ញាតការចូលប្រើទីតាំង (Location Permission) ក្នុង browser របស់អ្នក!";
+                else if (err.code === 2) msg = "❌ មិនអាចកំណត់ទីតាំងបាន សូមពិនិត្យ GPS/Internet!";
+                else if (err.code === 3) msg = "❌ ការចាប់ទីតាំងយូរពេក សូមព្យាយាមម្តងទៀត!";
+                resolve({ ok: false, message: msg });
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    });
+}
+
+// ========== TOAST ==========
+function showToast(msg, type = 'success') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast ${type} show`;
+    setTimeout(() => { t.className = 'toast'; }, 3500);
+}
+
+function formatLate(totalMins) {
+    if (totalMins <= 0) return "";
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    return h > 0 ? `${h}ម៉ោង ${m}នាទី` : `${m}នាទី`;
+}
+
+function saveRecords() {
+    localStorage.setItem('mikids_v2_db', JSON.stringify(records));
+}
+
+function renderTable() {
+    const list = document.getElementById('attendance-list');
+    let html = '';
+    STAFF_LIST.forEach(s => {
+        const r = records[s.name] || { morning: null, afternoon: null, checkout: null };
+
+        const amTime   = r.morning   ? r.morning.time   : '';
+        const amLate   = r.morning   ? formatLate(r.morning.late) : '';
+        const pmTime   = r.afternoon ? r.afternoon.time : '';
+        const pmLate   = r.afternoon ? formatLate(r.afternoon.late) : '';
+        const outTime  = r.checkout  ? r.checkout       : '';
+        const n = esc(s.name);
+
+        html += `<tr>
+            <td><b>${n}</b>${s.isNew ? '<span class="new-badge">NEW</span>' : ''}</td>
+            <td><input class="cell-input ${amTime ? 'has-value' : ''}" data-name="${n}"
+                placeholder="-" value="${esc(amTime)}"
+                onchange="manualEdit(this.dataset.name,'am_time',this.value,this)" /></td>
+            <td><input class="cell-input late-val ${amLate ? 'has-value' : ''}" data-name="${n}"
+                placeholder="-" value="${esc(amLate)}"
+                onchange="manualEdit(this.dataset.name,'am_late',this.value,this)" /></td>
+            <td><input class="cell-input ${pmTime ? 'has-value' : ''}" data-name="${n}"
+                placeholder="-" value="${esc(pmTime)}"
+                onchange="manualEdit(this.dataset.name,'pm_time',this.value,this)" /></td>
+            <td><input class="cell-input late-val ${pmLate ? 'has-value' : ''}" data-name="${n}"
+                placeholder="-" value="${esc(pmLate)}"
+                onchange="manualEdit(this.dataset.name,'pm_late',this.value,this)" /></td>
+            <td><input class="cell-input ${outTime ? 'has-value' : ''}" data-name="${n}"
+                placeholder="-" value="${esc(outTime)}"
+                onchange="manualEdit(this.dataset.name,'checkout',this.value,this)" /></td>
+        </tr>`;
+    });
+    list.innerHTML = html;
+}
+
+// ===== Manual edit handler =====
+function manualEdit(name, field, value, el) {
+    if (!records[name]) records[name] = { morning: null, afternoon: null, checkout: null };
+
+    if (field === 'am_time') {
+        if (!records[name].morning) records[name].morning = { time: '', late: 0 };
+        records[name].morning.time = value;
+    } else if (field === 'am_late') {
+        if (!records[name].morning) records[name].morning = { time: '', late: 0 };
+        const mins = parseInt(value);
+        records[name].morning.late = isNaN(mins) ? 0 : mins;
+    } else if (field === 'pm_time') {
+        if (!records[name].afternoon) records[name].afternoon = { time: '', late: 0 };
+        records[name].afternoon.time = value;
+    } else if (field === 'pm_late') {
+        if (!records[name].afternoon) records[name].afternoon = { time: '', late: 0 };
+        const mins = parseInt(value);
+        records[name].afternoon.late = isNaN(mins) ? 0 : mins;
+    } else if (field === 'checkout') {
+        records[name].checkout = value;
+    }
+
+    el.classList.toggle('has-value', !!value);
+    saveRecords();
+}
+
+async function submitAttendance(type) {
+    // ===== កំណត់ / ពិនិត្យអ្នកប្រើឧបករណ៍នេះ =====
+    let user = getDeviceUser();
+    let name;
+
+    if (user) {
+        name = user.name;
+    } else {
+        name = document.getElementById('staff-name').value;
+        if (!name) return showToast("សូមជ្រើសរើសឈ្មោះ ឬចុច \"បុគ្គលិកថ្មី\"!", 'error');
+
+        const confirmed = confirm(
+            `តើអ្នកគឺជា "${name}" មែនទេ?\n\n` +
+            `⚠️ ឧបករណ៍នេះនឹងចាក់សោសម្រាប់តែ "${name}" ប៉ុណ្ណោះក្រោយពីនេះ។ ` +
+            `មិនអាចប្តូរឈ្មោះលើឧបករណ៍នេះបានទៀត លុះត្រាតែ Admin ដោះសោ។`
+        );
+        if (!confirmed) return;
+
+        lockDeviceToUser(name);
+        updateDeviceUserView();
+    }
+
+    const scanStatus = document.getElementById('loc-status-scan');
+    scanStatus.className = 'loc-status';
+    scanStatus.textContent = '📍 កំពុងពិនិត្យទីតាំងរបស់អ្នក...';
+
+    const locResult = await verifyLocation();
+    if (!locResult.ok) {
+        scanStatus.textContent = locResult.message;
+        scanStatus.className = 'loc-status bad';
+        showToast(locResult.message, 'error');
+        return;
+    }
+    scanStatus.textContent = `✅ ទីតាំងត្រឹមត្រូវ (ចម្ងាយ ${Math.round(locResult.distance)}m ពីសាលា)`;
+    scanStatus.className = 'loc-status ok';
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const time24 = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString('km-KH');
+
+    const staff = STAFF_LIST.find(s => s.name === name);
+    const role = staff ? staff.role : (user && user.role) || 'N/A';
+
+    if (!records[name]) records[name] = { morning: null, afternoon: null, checkout: null };
+
+    let lateMins = 0;
+    let label = "";
+
+    if (type === 'morning') {
+        if (records[name].morning) return showToast("អ្នកបានស្កេនព្រឹករួចហើយ!", 'error');
+        const [th, tm] = CONFIG.morningLate.split(':').map(Number);
+        const [ch, cm] = time24.split(':').map(Number);
+        lateMins = Math.max(0, (ch * 60 + cm) - (th * 60 + tm));
+        records[name].morning = { time: timeStr, late: lateMins };
+        label = "☀️ Morning Check-In";
+    } else if (type === 'afternoon') {
+        if (records[name].afternoon) return showToast("អ្នកបានស្កេនថ្ងៃរួចហើយ!", 'error');
+        const [th, tm] = CONFIG.afternoonLate.split(':').map(Number);
+        const [ch, cm] = time24.split(':').map(Number);
+        lateMins = Math.max(0, (ch * 60 + cm) - (th * 60 + tm));
+        records[name].afternoon = { time: timeStr, late: lateMins };
+        label = "🌤️ Afternoon Check-In";
+    } else {
+        if (records[name].checkout) return showToast("អ្នកបានស្កេនចេញរួចហើយ!", 'error');
+        records[name].checkout = timeStr;
+        label = "🚪 Check-Out";
+    }
+
+    const lateInfo = (type !== 'checkout' && lateMins > 0) 
+        ? `⚠️ យឺត: ${formatLate(lateMins)}` 
+        : (type !== 'checkout' ? '✅ ទាន់ពេល' : '');
+
+    sendToTelegram(`🔔 <b>${label} | MIKIDS</b>\n📅 ${dateStr}\n👤 ឈ្មោះ: <b>${esc(name)}</b>\nRole: <b>${esc(role)}</b>\n⏰ ម៉ោង: ${timeStr}\n📍 ចម្ងាយ: ${Math.round(locResult.distance)}m\n${lateInfo}`);
+    
+    saveRecords();
+    showToast("✅ ស្កេនជោគជ័យ!", 'success');
+    renderTable();
+}
+
+function sendSummaryToTelegram() {
+    const dateStr = new Date().toLocaleDateString('km-KH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    let msg = `📊 <b>របាយការណ៍សរុប</b>\n📅 ${dateStr}\n\n`;
+
+    STAFF_LIST.forEach((s, i) => {
+        const r = records[s.name];
+        if (r && (r.morning || r.afternoon || r.checkout)) {
+            const m = r.morning ? r.morning.time : '-';
+            const a = r.afternoon ? r.afternoon.time : '-';
+            const o = r.checkout ? r.checkout : '-';
+            msg += `${i+1}. ✅ <b>${esc(s.name)}</b>\n   AM: ${m} | PM: ${a} | Out: ${o}\n`;
+        } else {
+            msg += `${i+1}. ❌ <b>${esc(s.name)}</b>: អវត្តមាន\n`;
+        }
+    });
+
+    sendToTelegram(msg);
+    showToast("📤 ផ្ញើរបាយការណ៍រួចរាល់!");
+}
+
+function resetRecords() {
+    if (!confirm("តើអ្នកពិតជាចង់លុបទិន្នន័យថ្ងៃនេះទាំងអស់?")) return;
+    records = {};
+    localStorage.removeItem('mikids_v2_db');
+    renderTable();
+    showToast("🗑️ លុបទិន្នន័យរួចរាល់!", 'error');
+}
+
+function sendToTelegram(msg) {
+    fetch(`https://api.telegram.org/bot${CONFIG.token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CONFIG.chatId, text: msg, parse_mode: 'HTML' })
+    });
+}
+
+window.onload = async () => {
+    new QRCode(document.getElementById("qrcode"), { text: CONFIG.githubLink, width: 150, height: 150 });
+
+    loadCustomStaff();
+
+    // ប្រសិនបើឧបករណ៍ត្រូវបានចាក់សោសម្រាប់បុគ្គលិកថ្មី ប៉ុន្តែបញ្ជីបាត់ (ឧ. លុប storage) — បន្ថែមវាត្រឡប់មកវិញ
+    const lockedUser = getDeviceUser();
+    if (lockedUser && !staffExists(lockedUser.name)) {
+        STAFF_LIST.push({ name: lockedUser.name, role: lockedUser.role || '', isNew: true });
+        saveCustomStaff();
+    }
+
+    populateStaffSelect();
+    renderTable();
+    updateLocationStatusDisplay();
+    updateDeviceUserView();
+
+    // ទាញបញ្ជីបុគ្គលិកថ្មីពី cloud (ប្រសិនបើបានកំណត់) ហើយធ្វើបច្ចុប្បន្នភាពបញ្ជី
+    if (await syncCloudStaff()) {
+        const current = document.getElementById('staff-name').value;
+        populateStaffSelect(current);
+        renderTable();
+    }
+};
+</script>
+</body>
+</html>
